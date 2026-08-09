@@ -1,17 +1,25 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
-import type { TableNodeData } from '../layout/dagreLayout'
+import type { SchemaNode } from '../api/types'
+
+export interface TableNodeData extends Record<string, unknown> {
+  table: SchemaNode
+  highlighted?: boolean
+}
 
 function TableNodeComponent({ data }: { data: TableNodeData }) {
   const { table } = data
+  const highlighted = data.highlighted === true
   return (
     <div
       style={{
         width: 220,
         borderRadius: 8,
-        border: '1px solid #cbd5e1',
+        border: highlighted ? '2px solid #2563eb' : '1px solid #cbd5e1',
         background: '#ffffff',
-        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)',
+        boxShadow: highlighted
+          ? '0 0 0 3px rgba(37, 99, 235, 0.25)'
+          : '0 2px 8px rgba(15, 23, 42, 0.08)',
         overflow: 'hidden',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       }}

@@ -3,10 +3,16 @@ import { useState, type FormEvent } from 'react'
 interface ConnectionFormProps {
   onConnect: (connectionString: string) => void
   onLoadDemo: () => void
+  onLoadAuditDemo: () => void
   loading: boolean
 }
 
-export function ConnectionForm({ onConnect, onLoadDemo, loading }: ConnectionFormProps) {
+export function ConnectionForm({
+  onConnect,
+  onLoadDemo,
+  onLoadAuditDemo,
+  loading,
+}: ConnectionFormProps) {
   const [value, setValue] = useState('')
 
   function submit(e: FormEvent) {
@@ -42,6 +48,14 @@ export function ConnectionForm({ onConnect, onLoadDemo, loading }: ConnectionFor
       </button>
       <button type="button" onClick={onLoadDemo} disabled={loading} style={buttonStyle('#059669')}>
         Load demo schema
+      </button>
+      <button
+        type="button"
+        onClick={onLoadAuditDemo}
+        disabled={loading}
+        style={buttonStyle('#b45309')}
+      >
+        Load audit demo
       </button>
     </form>
   )

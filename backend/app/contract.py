@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,10 +9,17 @@ class Column(BaseModel):
     isPrimaryKey: bool = False
 
 
+class Index(BaseModel):
+    name: str
+    columns: list[str]
+
+
 class Node(BaseModel):
     id: str
     schema: Optional[str] = None
     columns: list[Column] = []
+    indexes: list[Index] = []
+    pkColumns: list[str] = []
 
 
 class Edge(BaseModel):
@@ -28,6 +35,14 @@ class SkippedTable(BaseModel):
     reason: str
 
 
+class Finding(BaseModel):
+    severity: Literal["error", "warning", "info"]
+    category: str
+    table: str
+    message: str
+    suggestion: Optional[str] = None
+
+
 class DatabaseInfo(BaseModel):
     dialect: str
     name: str
@@ -40,3 +55,4 @@ class SchemaPayload(BaseModel):
     edges: list[Edge] = []
     skippedTables: list[SkippedTable] = []
     warnings: list[str] = []
+    findings: list[Finding] = []

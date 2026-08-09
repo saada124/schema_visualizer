@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react'
 import { toPng } from 'html-to-image'
 import { ConnectionForm } from './components/ConnectionForm'
-import { DiagramCanvas } from './components/DiagramCanvas'
+import { DiagramCanvas, type PanRequest } from './components/DiagramCanvas'
 import { ErrorBanner } from './components/ErrorBanner'
 import { WarningBanner } from './components/WarningBanner'
+import { AuditPanel } from './components/AuditPanel'
 import { AiPanel } from './components/AiPanel'
 import { connectSchema, refreshSchema } from './api/client'
 import type { ApiError, SchemaPayload } from './api/types'
@@ -15,6 +16,13 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [focusId, setFocusId] = useState<string | null>(null)
   const [focusEnabled, setFocusEnabled] = useState(false)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const [panRequest, setPanRequest] = useState<PanRequest | null>(null)
+
+  const handleSelectFromAudit = useCallback((nodeId: string) => {
+    setHighlightId(nodeId)
+    setPanRequest({ id: nodeId, ts: Date.now() })
+  }, [])
 
   const runConnect = useCallback(async (connectionString: string) => {
     setLoading(true)
@@ -24,6 +32,8 @@ export default function App() {
     if (res.ok) {
       setPayload(res.data)
       setFocusId(null)
+      setHighlightId(null)
+      setPanRequest(null)
     } else {
       setError(res.error)
     }
@@ -104,6 +114,7 @@ export default function App() {
         <ConnectionForm
           onConnect={runConnect}
           onLoadDemo={() => runConnect('demo://chinook')}
+          onLoadAuditDemo={() => runConnect('demo://audit')}
           loading={loading}
         />
         <div style={{ display: 'flex', gap: 8, padding: '0 16px 8px', alignItems: 'center' }}>
@@ -129,7 +140,12 @@ export default function App() {
             Export PNG
           </button>
           <div style={{ flex: 1 }} />
-          {payload ? <AiPanel /> : null}
+          {payload ? (
+            <>
+              <AuditPanel payload={payload} onSelectNode={handleSelectFromAudit} />
+              <AiPanel />
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -143,11 +159,19 @@ export default function App() {
           </div>
         ) : null}
         {payload ? (
-          <DiagramCanvas
-            payload={payload}
-            visibleIds={visibleIds}
-            onSelectNode={focusEnabled ? setFocusId : undefined}
-          />
+          payload.nodes.length === 0 ? (
+            <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#b45309', fontSize: 14 }}>
+              Connected, but no tables were found in this database.
+            </div>
+          ) : (
+            <DiagramCanvas
+              payload={payload}
+              visibleIds={visibleIds}
+              onSelectNode={focusEnabled ? setFocusId : undefined}
+              highlightId={highlightId}
+              panRequest={panRequest}
+            />
+          )
         ) : (
           !loading && (
             <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#94a3b8', fontSize: 14 }}>

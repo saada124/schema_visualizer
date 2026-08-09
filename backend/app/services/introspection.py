@@ -7,8 +7,9 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.reflection import Inspector
 
-from app.contract import Column, DatabaseInfo, Edge, Node, SchemaPayload, SkippedTable
+from app.contract import Column, DatabaseInfo, Edge, Index, Node, SchemaPayload, SkippedTable
 from app.errors import IntrospectionTimeout
+from app.services.audit import run_audit
 
 INTROSPECTION_TIMEOUT = 30
 
@@ -45,13 +46,15 @@ def introspect(engine: Engine) -> SchemaPayload:
                 columns = inspector.get_columns(table, schema=schema)
                 pk = inspector.get_pk_constraint(table, schema=schema)
                 fks = inspector.get_foreign_keys(table, schema=schema)
+                indexes = inspector.get_indexes(table, schema=schema)
             except Exception as exc:
                 skipped.append(
                     SkippedTable(name=full_id, reason=f"introspection error: {exc}")
                 )
                 continue
 
-            pk_columns = set(pk.get("constrained_columns") or [])
+            pk_columns_ordered = list(pk.get("constrained_columns") or [])
+            pk_columns = set(pk_columns_ordered)
             node_columns = [
                 Column(
                     name=col["name"],
@@ -60,7 +63,22 @@ def introspect(engine: Engine) -> SchemaPayload:
                 )
                 for col in columns
             ]
-            nodes.append(Node(id=full_id, schema=schema, columns=node_columns))
+            node_indexes = [
+                Index(
+                    name=idx["name"],
+                    columns=[c for c in (idx.get("column_names") or []) if c is not None],
+                )
+                for idx in indexes
+            ]
+            nodes.append(
+                Node(
+                    id=full_id,
+                    schema=schema,
+                    columns=node_columns,
+                    indexes=node_indexes,
+                    pkColumns=pk_columns_ordered,
+                )
+            )
 
             if not pk_columns:
                 warnings.append(f"Table '{full_id}' has no primary key")
@@ -85,13 +103,15 @@ def introspect(engine: Engine) -> SchemaPayload:
 
     dialect = engine.dialect.name
     db_name = engine.url.database or engine.url.host or ""
-    return SchemaPayload(
+    payload = SchemaPayload(
         database=DatabaseInfo(dialect=dialect, name=db_name),
         nodes=nodes,
         edges=edges,
         skippedTables=skipped,
         warnings=warnings,
     )
+    payload.findings = run_audit(payload)
+    return payload
 
 
 def introspect_with_timeout(

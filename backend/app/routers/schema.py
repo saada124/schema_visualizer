@@ -35,6 +35,13 @@ def resolve_connection(connection_string: str) -> str:
                 400, "connection", f"Demo schema not found at {db_path}. Download it first."
             )
         return f"sqlite:///{db_path.as_posix()}"
+    if connection_string == "demo://audit":
+        db_path = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "audit_demo.db"
+        if not db_path.exists():
+            raise ApiError(
+                400, "connection", f"Audit demo schema not found at {db_path}. Build it first."
+            )
+        return f"sqlite:///{db_path.as_posix()}"
     return connection_string
 
 

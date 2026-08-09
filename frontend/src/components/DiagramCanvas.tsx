@@ -4,6 +4,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
   applyNodeChanges,
   applyEdgeChanges,
   type Node,
@@ -18,17 +19,35 @@ import type { SchemaPayload } from '../api/types'
 
 const nodeTypes = { tableNode: TableNode }
 
+export interface PanRequest {
+  id: string
+  ts: number
+}
+
 interface DiagramCanvasProps {
   payload: SchemaPayload
   visibleIds: Set<string> | null
   onSelectNode?: (nodeId: string) => void
+  highlightId?: string | null
+  panRequest?: PanRequest | null
 }
 
-export function DiagramCanvas({ payload, visibleIds, onSelectNode }: DiagramCanvasProps) {
+export function DiagramCanvas({
+  payload,
+  visibleIds,
+  onSelectNode,
+  highlightId = null,
+  panRequest = null,
+}: DiagramCanvasProps) {
   const { nodes, edges } = useMemo(() => layoutGraph(payload), [payload])
   const filteredNodes = useMemo(
-    () => (visibleIds ? nodes.filter((n) => visibleIds.has(n.id)) : nodes),
-    [nodes, visibleIds],
+    () =>
+      (visibleIds ? nodes.filter((n) => visibleIds.has(n.id)) : nodes).map((node) =>
+        node.id === highlightId
+          ? { ...node, data: { ...node.data, highlighted: true } }
+          : node,
+      ),
+    [nodes, visibleIds, highlightId],
   )
   const filteredEdges = useMemo(
     () =>
@@ -72,6 +91,22 @@ export function DiagramCanvas({ payload, visibleIds, onSelectNode }: DiagramCanv
       <Background color="#e2e8f0" gap={16} />
       <Controls />
       <MiniMap pannable zoomable nodeStrokeWidth={3} />
+      <PanController request={panRequest} />
     </ReactFlow>
   )
+}
+
+function PanController({ request }: { request: PanRequest | null }) {
+  const { fitView } = useReactFlow()
+  useEffect(() => {
+    if (request) {
+      fitView({
+        nodes: [{ id: request.id }],
+        duration: 350,
+        padding: 0.35,
+        maxZoom: 1.3,
+      })
+    }
+  }, [request, fitView])
+  return null
 }
