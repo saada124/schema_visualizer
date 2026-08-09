@@ -1,7 +1,37 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { explainSchema } from '../api/client'
 
 const KEY_STORAGE = 'schema-visualizer.aiKey'
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function renderBullets(text: string): ReactNode[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, i) => {
+      const content = line.startsWith('- ') ? line.slice(2) : line
+      const parts: ReactNode[] = []
+      content.split(/\*\*(.+?)\*\*/).forEach((seg, j) => {
+        if (!seg) return
+        parts.push(
+          j % 2 === 1 ? (
+            <strong key={j}>{escapeHtml(seg)}</strong>
+          ) : (
+            escapeHtml(seg)
+          ),
+        )
+      })
+      return (
+        <li key={i} style={{ marginBottom: 5 }}>
+          {parts}
+        </li>
+      )
+    })
+}
 
 function maskedKey(key: string): string {
   if (!key) return 'none'
@@ -21,6 +51,7 @@ export function AiPanel() {
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const savedKey = localStorage.getItem(KEY_STORAGE)
   const hasKey = Boolean(savedKey)
@@ -61,6 +92,16 @@ export function AiPanel() {
     setLoading(false)
     if (res.ok) setText(res.data.text)
     else setError(res.error.message)
+  }
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
   }
 
   return (
@@ -119,12 +160,24 @@ export function AiPanel() {
                 <button onClick={run} disabled={loading} style={toolStyle}>
                   {loading ? 'Thinking…' : 'Explain schema'}
                 </button>
+                {text ? (
+                  <>
+                    <button onClick={copyText} style={toolStyle}>
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                    <button onClick={run} disabled={loading} title="Run the explanation again" style={toolStyle}>
+                      Regenerate
+                    </button>
+                  </>
+                ) : null}
                 <button onClick={startChange} title="Change the stored API key" style={toolStyle}>
                   Change key
                 </button>
               </div>
               {error ? <div style={{ color: '#b91c1c', marginBottom: 6 }}>{error}</div> : null}
-              {text ? <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{text}</pre> : null}
+              {text ? (
+                <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.55 }}>{renderBullets(text)}</ul>
+              ) : null}
             </div>
           ) : null}
         </>

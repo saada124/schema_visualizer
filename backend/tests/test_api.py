@@ -90,8 +90,10 @@ def test_ai_explain_requires_connection(client):
 
 def test_ai_explain_success(client, monkeypatch):
     client.post("/schema/connect", json={"connectionString": NORMAL})
+    calls: dict = {}
 
     def fake_post(url, headers=None, json=None, timeout=None):
+        calls["body"] = json
         req = httpx.Request("POST", url)
         return httpx.Response(
             200,
@@ -106,6 +108,8 @@ def test_ai_explain_success(client, monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["text"] == "A clean e-commerce schema."
+    assert calls["body"]["temperature"] == 0.3
+    assert calls["body"]["max_tokens"] == 300
 
 
 def test_ai_explain_openrouter_key_routes_to_openrouter(client, monkeypatch):

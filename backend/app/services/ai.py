@@ -39,15 +39,23 @@ def explain(payload: SchemaPayload, api_key: str, model: str) -> str:
     prompt = _build_prompt(payload)
     body: dict[str, Any] = {
         "model": model,
+        "temperature": 0.3,
+        "max_tokens": 300,
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are a database architect. Explain the following database schema "
-                    "in clear plain language for a developer or DBA: overall purpose, key "
-                    "tables, important relationships, and any data-quality concerns "
-                    "(e.g. tables without primary keys, orphans). Be concise, use short "
-                    "sections, no marketing language."
+                    "briefly, as 4-6 short bullet points in plain language for a developer "
+                    "or DBA. Use exactly this shape, one point per line starting with '- ':\n"
+                    "- **Purpose:** one sentence on what the database does\n"
+                    "- **Core tables:** the 3-5 most important tables and their role\n"
+                    "- **Relationships:** the main foreign-key relationships\n"
+                    "- **Concerns:** only issues stated in the schema facts below; if "
+                    "the facts say 'none detected', write 'none detected' instead of "
+                    "inventing anything\n"
+                    "Under 150 words total. No headers, no numbered lists, no marketing "
+                    "language."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -120,9 +128,66 @@ def _build_prompt(payload: SchemaPayload) -> str:
                 f"- {edge.source}({', '.join(edge.sourceColumns)}) -> "
                 f"{edge.target}({', '.join(edge.targetColumns)})"
             )
-    if payload.warnings:
-        lines.append("")
-        lines.append("Warnings:")
-        for w in payload.warnings:
-            lines.append(f"- {w}")
+    lines.append("")
+    lines.extend(_schema_facts(payload))
     return "\n".join(lines)
+
+
+def _schema_facts(payload: SchemaPayload) -> list[str]:
+    facts = [
+        f"- Schema facts: {len(payload.nodes)} tables, {len(payload.edges)} foreign keys"
+    ]
+    join_tables = [
+        n.id
+        for n in payload.nodes
+        if _is_join_table(n, payload)
+    ]
+    self_refs = sorted({e.source for e in payload.edges if e.source == e.target})
+    related = {e.source for e in payload.edges} | {e.target for e in payload.edges}
+    orphans = sorted(n.id for n in payload.nodes if n.id not in related)
+    clusters = _connected_components(payload)
+
+    facts.append(f"- Join tables (many-to-many): {', '.join(join_tables) or 'none'}")
+    facts.append(f"- Self-referencing tables: {', '.join(self_refs) or 'none'}")
+    facts.append(f"- Orphan tables (no relationships): {', '.join(orphans) or 'none'}")
+    facts.append(
+        f"- Connectivity: {clusters} {'connected components' if clusters > 1 else 'connected component'}"
+    )
+
+    alerts = [f"table '{t.name}': {t.reason}" for t in payload.skippedTables]
+    alerts += payload.warnings
+    facts.append(f"- Data quality alerts: {'; '.join(alerts) if alerts else 'none detected'}")
+    return facts
+
+
+def _is_join_table(node, payload: SchemaPayload) -> bool:
+    pk_cols = {c.name for c in node.columns if c.isPrimaryKey}
+    if len(pk_cols) < 2:
+        return False
+    fk_cols: set[str] = set()
+    for edge in payload.edges:
+        if edge.source == node.id:
+            fk_cols.update(edge.sourceColumns)
+    return pk_cols <= fk_cols
+
+
+def _connected_components(payload: SchemaPayload) -> int:
+    adj = {n.id: set() for n in payload.nodes}
+    for edge in payload.edges:
+        if edge.source in adj and edge.target in adj:
+            adj[edge.source].add(edge.target)
+            adj[edge.target].add(edge.source)
+    seen: set[str] = set()
+    count = 0
+    for node in payload.nodes:
+        if node.id in seen:
+            continue
+        count += 1
+        stack = [node.id]
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            stack.extend(adj[current] - seen)
+    return count
