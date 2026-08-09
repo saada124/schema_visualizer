@@ -108,12 +108,65 @@ def test_ai_explain_success(client, monkeypatch):
     assert resp.json()["text"] == "A clean e-commerce schema."
 
 
+def test_ai_explain_openrouter_key_routes_to_openrouter(client, monkeypatch):
+    client.post("/schema/connect", json={"connectionString": NORMAL})
+    calls: dict = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls["url"] = url
+        calls["headers"] = headers
+        calls["body"] = json
+        req = httpx.Request("POST", url)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "Explained."}}]},
+            request=req,
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    resp = client.post(
+        "/ai/explain",
+        json={
+            "apiKey": "sk-or-v1-test-key-openrouter",
+            "model": "gpt-4o-mini",
+            "provider": "openai",
+        },
+    )
+    assert resp.status_code == 200
+    assert calls["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert calls["body"]["model"] == "openai/gpt-4o-mini"
+    assert calls["headers"]["Authorization"] == "Bearer sk-or-v1-test-key-openrouter"
+    assert calls["headers"]["X-Title"] == "Schema Visualizer"
+
+
+def test_ai_explain_openrouter_401_hint(client, monkeypatch):
+    client.post("/schema/connect", json={"connectionString": NORMAL})
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        req = httpx.Request("POST", url)
+        return httpx.Response(401, json={"error": {"message": "bad key"}}, request=req)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    resp = client.post(
+        "/ai/explain",
+        json={"apiKey": "sk-or-v1-test", "model": "gpt-4o-mini", "provider": "openai"},
+    )
+    assert resp.status_code == 502
+    message = resp.json()["error"]["message"]
+    assert "openrouter.ai/keys" in message
+    assert "openai.com" not in message
+
+
 def test_ai_explain_provider_error(client, monkeypatch):
     client.post("/schema/connect", json={"connectionString": NORMAL})
 
     def fake_post(url, headers=None, json=None, timeout=None):
         req = httpx.Request("POST", url)
-        return httpx.Response(401, json={"error": "bad key"}, request=req)
+        return httpx.Response(
+            401,
+            json={"error": {"message": "Incorrect API key provided: sk-xxxx."}},
+            request=req,
+        )
 
     monkeypatch.setattr(httpx, "post", fake_post)
     resp = client.post(
@@ -121,4 +174,7 @@ def test_ai_explain_provider_error(client, monkeypatch):
         json={"apiKey": "bad-key", "model": "gpt-4o-mini", "provider": "openai"},
     )
     assert resp.status_code == 502
-    assert resp.json()["error"]["kind"] == "ai"
+    body = resp.json()["error"]
+    assert body["kind"] == "ai"
+    assert "Incorrect API key (401)" in body["message"]
+    assert "api.openai.com" not in body["message"]

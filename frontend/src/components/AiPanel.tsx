@@ -1,95 +1,134 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { explainSchema } from '../api/client'
 
 const KEY_STORAGE = 'schema-visualizer.aiKey'
 
+function maskedKey(key: string): string {
+  if (!key) return 'none'
+  const trimmed = key.trim()
+  const tail = trimmed.length <= 4 ? '•'.repeat(trimmed.length) : `…${trimmed.slice(-4)}`
+  return trimmed.startsWith('sk-or-') ? `or${tail}` : tail
+}
+
 export function AiPanel() {
-  const [hasKey, setHasKey] = useState(() => Boolean(localStorage.getItem(KEY_STORAGE)))
   const [key, setKey] = useState(() => localStorage.getItem(KEY_STORAGE) ?? '')
-  const [model, setModel] = useState('gpt-4o-mini')
-  const [open, setOpen] = useState(hasKey)
+  const [editing, setEditing] = useState(() => !localStorage.getItem(KEY_STORAGE))
+  const [model, setModel] = useState(() => {
+    const stored = localStorage.getItem(KEY_STORAGE) ?? ''
+    return stored.startsWith('sk-or-') ? 'openai/gpt-4o-mini' : 'gpt-4o-mini'
+  })
+  const [open, setOpen] = useState(() => Boolean(localStorage.getItem(KEY_STORAGE)))
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  function saveKey() {
-    if (key.trim()) {
-      localStorage.setItem(KEY_STORAGE, key.trim())
-      setHasKey(true)
+  const savedKey = localStorage.getItem(KEY_STORAGE)
+  const hasKey = Boolean(savedKey)
+
+  function saveKey(e?: FormEvent) {
+    e?.preventDefault()
+    const trimmed = key.trim()
+    if (trimmed) {
+      localStorage.setItem(KEY_STORAGE, trimmed)
+      setKey(trimmed)
+      setEditing(false)
+      setError('')
+      setText('')
       setOpen(true)
     }
   }
 
-  function clearKey() {
+  function startChange() {
+    setKey(localStorage.getItem(KEY_STORAGE) ?? '')
+    setEditing(true)
+    setOpen(true)
+  }
+
+  function removeKey() {
     localStorage.removeItem(KEY_STORAGE)
-    setHasKey(false)
-    setOpen(false)
     setKey('')
+    setEditing(true)
+    setOpen(false)
+    setText('')
+    setError('')
   }
 
   async function run() {
     setLoading(true)
     setError('')
     setText('')
-    const res = await explainSchema({ apiKey: key, model, provider: 'openai' })
+    const res = await explainSchema({ apiKey: key.trim(), model, provider: 'openai' })
     setLoading(false)
     if (res.ok) setText(res.data.text)
     else setError(res.error.message)
   }
 
-  if (!hasKey) {
-    return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <input
-          type="password"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder="AI API key (stored in this browser only)"
-          style={inputStyle}
-        />
-        <button onClick={saveKey} disabled={!key.trim()} style={toolStyle}>
-          Enable AI
-        </button>
-      </div>
-    )
-  }
-
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
-      {open ? (
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 'calc(100% + 8px)',
-            width: 380,
-            maxHeight: 420,
-            overflowY: 'auto',
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: 10,
-            boxShadow: '0 8px 24px rgba(15,23,42,0.15)',
-            padding: 12,
-            zIndex: 20,
-            fontSize: 13,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="model" style={inputStyle} />
-            <button onClick={run} disabled={loading} style={toolStyle}>
-              {loading ? 'Thinking…' : 'Explain schema'}
+      {editing ? (
+        <form onSubmit={saveKey} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="OpenAI or OpenRouter API key (stored in this browser only)"
+            style={inputStyle}
+          />
+          <button type="submit" disabled={!key.trim()} style={toolStyle}>
+            {hasKey ? 'Save key' : 'Enable AI'}
+          </button>
+          {hasKey ? (
+            <button type="button" onClick={removeKey} title="Remove key from this browser" style={toolStyle}>
+              Remove
             </button>
-            <button onClick={clearKey} title="Remove key from this browser" style={toolStyle}>
-              ✕
+          ) : null}
+          {hasKey ? (
+            <button type="button" onClick={startChange} title="Cancel, keep the stored key" style={toolStyle}>
+              Cancel
             </button>
-          </div>
-          {error ? <div style={{ color: '#b91c1c', marginBottom: 6 }}>{error}</div> : null}
-          {text ? <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{text}</pre> : null}
-        </div>
-      ) : null}
-      <button onClick={() => setOpen((o) => !o)} style={toolStyle}>
-        AI Explain
-      </button>
+          ) : null}
+        </form>
+      ) : (
+        <>
+          <button onClick={() => setOpen((o) => !o)} style={toolStyle}>
+            AI Explain
+          </button>
+          <span style={{ fontSize: 12, color: '#64748b' }} title="Stored in this browser only">
+            key {maskedKey(savedKey ?? '')}
+          </span>
+          {open ? (
+            <div
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 'calc(100% + 8px)',
+                width: 380,
+                maxHeight: 420,
+                overflowY: 'auto',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(15,23,42,0.15)',
+                padding: 12,
+                zIndex: 20,
+                fontSize: 13,
+              }}
+            >
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="model" style={inputStyle} />
+                <button onClick={run} disabled={loading} style={toolStyle}>
+                  {loading ? 'Thinking…' : 'Explain schema'}
+                </button>
+                <button onClick={startChange} title="Change the stored API key" style={toolStyle}>
+                  Change key
+                </button>
+              </div>
+              {error ? <div style={{ color: '#b91c1c', marginBottom: 6 }}>{error}</div> : null}
+              {text ? <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{text}</pre> : null}
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   )
 }
