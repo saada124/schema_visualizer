@@ -46,21 +46,6 @@ sqlite:///C:/path/to/database.db
 The dialect is auto-detected from the URL prefix. Driver packages may need to
 be installed first (e.g. `psycopg2-binary` for PostgreSQL).
 
-## Security model
-
-- **Local only** — runs on localhost, no accounts, no server-side persistence.
-- **Credentials live in memory for the session only** and are never written
-  to disk or logged. Connection errors are surfaced without echoing the URL.
-- **Read-only by design** — the tool only runs SQLAlchemy introspection
-  queries, never DDL or DML. For production databases, connect via a
-  read-only role or replica.
-- **AI explanations** — the AI API key is stored in your browser's
-  `localStorage` only and sent per-request; it is never persisted by the
-  backend. The AI feature is hidden entirely until you provide a key.
-  Both **OpenAI** and **OpenRouter** keys are supported (provider is
-  auto-detected from the key prefix `sk-or-` → OpenRouter); the key is
-  trimmed before sending, and can be changed or removed from the UI.
-
 ## Features
 
 - Interactive ERD with dagre auto-layout, minimap, zoom, fit-view
