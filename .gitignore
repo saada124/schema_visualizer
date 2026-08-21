@@ -43,3 +43,6 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local planning docs
+Database_Schema_Visualizer_Overview.md

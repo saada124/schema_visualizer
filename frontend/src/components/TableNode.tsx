@@ -5,11 +5,13 @@ import type { SchemaNode } from '../api/types'
 export interface TableNodeData extends Record<string, unknown> {
   table: SchemaNode
   highlighted?: boolean
+  dimmed?: boolean
 }
 
 function TableNodeComponent({ data }: { data: TableNodeData }) {
   const { table } = data
   const highlighted = data.highlighted === true
+  const dimmed = data.dimmed === true
   return (
     <div
       style={{
@@ -20,6 +22,8 @@ function TableNodeComponent({ data }: { data: TableNodeData }) {
         boxShadow: highlighted
           ? '0 0 0 3px rgba(37, 99, 235, 0.25)'
           : '0 2px 8px rgba(15, 23, 42, 0.08)',
+        opacity: dimmed ? 0.3 : 1,
+        filter: dimmed ? 'grayscale(70%)' : undefined,
         overflow: 'hidden',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       }}

@@ -26,7 +26,8 @@ export interface PanRequest {
 
 interface DiagramCanvasProps {
   payload: SchemaPayload
-  visibleIds: Set<string> | null
+  hiddenIds?: Set<string> | null
+  dimmedIds?: Set<string> | null
   onSelectNode?: (nodeId: string) => void
   highlightId?: string | null
   panRequest?: PanRequest | null
@@ -34,7 +35,8 @@ interface DiagramCanvasProps {
 
 export function DiagramCanvas({
   payload,
-  visibleIds,
+  hiddenIds = null,
+  dimmedIds = null,
   onSelectNode,
   highlightId = null,
   panRequest = null,
@@ -42,21 +44,31 @@ export function DiagramCanvas({
   const { nodes, edges } = useMemo(() => layoutGraph(payload), [payload])
   const filteredNodes = useMemo(
     () =>
-      (visibleIds ? nodes.filter((n) => visibleIds.has(n.id)) : nodes).map((node) =>
-        node.id === highlightId
-          ? { ...node, data: { ...node.data, highlighted: true } }
-          : node,
-      ),
-    [nodes, visibleIds, highlightId],
+      nodes
+        .filter((n) => !hiddenIds?.has(n.id))
+        .map((node) => {
+          let data = node.data
+          if (node.id === highlightId) data = { ...data, highlighted: true }
+          if (dimmedIds?.has(node.id)) data = { ...data, dimmed: true }
+          return data === node.data ? node : { ...node, data }
+        }),
+    [nodes, hiddenIds, dimmedIds, highlightId],
   )
   const filteredEdges = useMemo(
     () =>
-      edges.filter((e) => {
-        const src = filteredNodes.find((n) => n.id === e.source)
-        const tgt = filteredNodes.find((n) => n.id === e.target)
-        return Boolean(src && tgt)
-      }),
-    [edges, filteredNodes],
+      edges
+        .filter(
+          (e) =>
+            !hiddenIds?.has(e.source) &&
+            !hiddenIds?.has(e.target),
+        )
+        .map((edge) => {
+          const dim = dimmedIds?.has(edge.source) || dimmedIds?.has(edge.target)
+          return dim
+            ? { ...edge, style: { ...edge.style, opacity: 0.12 } }
+            : edge
+        }),
+    [edges, hiddenIds, dimmedIds],
   )
 
   const [rfNodes, setRfNodes] = useState<Node[]>(filteredNodes)

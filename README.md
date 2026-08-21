@@ -7,14 +7,13 @@ and automatically generates an interactive Entity Relationship Diagram (ERD).
 - **Backend**: FastAPI + SQLAlchemy Inspector (normalized introspection across dialects)
 - **Databases**: SQLite (bundled demo), PostgreSQL, MySQL, SQL Server
 
-> **About this project** — this repository doubles as a learning project. It
-> was built to get hands-on with the modern stack it uses, including
-> **FastAPI** (async APIs, Pydantic contracts, error envelopes), **SQLAlchemy**
-> (dialect-agnostic DB introspection), **React** with **TypeScript** (typed
-> UI + strict builds with oxlint), **React Flow** (graph rendering) and
-> **dagre** (auto-layout), **uv** (Python dependency management), and
-> provider-agnostic **LLM API integration**. The code is kept small and
-> readable on purpose.
+> **About this project** — this is my learning project:
+>
+> - Learned **FastAPI** — building the backend API
+> - Learned database tools — reading table info with **SQLAlchemy**
+> - Learned **graph visualization** — turning tables into an interactive diagram (React Flow + dagre)
+> - Got **full stack development** practice — React frontend talking to a Python backend
+> - Then added AI features that explain any schema in plain English, using two AI services (**OpenAI** and **OpenRouter**) — self-taught from several tutorials and docs
 
 ## Quick start (zero setup — demo schema)
 
@@ -30,7 +29,7 @@ npm run dev
 ```
 
 Open http://localhost:5173 and click **Load demo schema** (bundled Chinook,
-11 tables). No database required.
+11 tables) or **Load audit demo**. No database required.
 
 ## Connect to a real database
 
@@ -49,7 +48,13 @@ be installed first (e.g. `psycopg2-binary` for PostgreSQL).
 ## Features
 
 - Interactive ERD with dagre auto-layout, minimap, zoom, fit-view
-- Search tables; focus mode (click a table to show its 1-hop neighborhood)
+- Search tables
+- Focus mode: click a table to see it plus its linked tables (1-3 steps away).
+  Everything else fades into the background
+- Health check panel: spots common problems — foreign keys without indexes,
+  circular table links, tables with no primary key, duplicate indexes, and
+  tables with no connections. Click a problem to highlight that table on the
+  diagram, or copy the suggested fix
 - Refresh schema on demand (metadata is cached after the first read)
 - Export PNG
 - Schema stats (tables / columns / FKs / orphan tables)
@@ -67,12 +72,12 @@ be installed first (e.g. `psycopg2-binary` for PostgreSQL).
 ```bash
 cd backend
 uv sync          # install deps from uv.lock
-uv run pytest    # 19 tests: introspection fixtures + API + AI prompt suites
+uv run pytest    # 28 tests: introspection fixtures + health audit + API + AI prompt suites
 uv run python tests/fixtures/build_fixtures.py   # regenerate SQLite fixtures
 ```
 
 Fixture edge cases: normal FK graph, composite primary key, self-referencing
-FK, table with no primary key, orphaned table.
+FK, table with no primary key, orphaned table, circular table links.
 
 ### Frontend
 
@@ -92,15 +97,16 @@ React (React Flow + dagre)  ->  FastAPI  ->  SQLAlchemy Inspector
 
 The contract between the two sides is `backend/app/contract.py` (Pydantic)
 mirrored by `frontend/src/api/types.ts`. Nodes carry a nullable `schema`
-namespace (clustering-ready); FK edges use column arrays so composite
-foreign keys survive. Layout is computed on the client — the payload is
-layout-free.
+namespace, ordered `pkColumns`, and `indexes`; FK edges use column arrays so
+composite foreign keys survive. The payload also includes structured
+`findings` from the health audit (severity/category/table/message/suggestion).
+Layout is computed on the client — the payload is layout-free.
 
 ### API
 
 | Method | Path             | Purpose                                   |
 | ------ | ---------------- | ----------------------------------------- |
-| POST   | `/schema/connect`| Connect (or `demo://chinook`), introspect, cache |
+| POST   | `/schema/connect`| Connect (`demo://chinook` or `demo://audit` also work), introspect, cache |
 | GET    | `/schema`        | Cached payload (409 if not connected)     |
 | POST   | `/schema/refresh`| Re-introspect and replace cache           |
 | POST   | `/ai/explain`    | Brief bullet-point explanation. Body: `{apiKey, model, provider}` — provider is auto-detected from the key prefix (`sk-or-` → OpenRouter, else OpenAI); slash-less models are expanded to `vendor/model` for OpenRouter |

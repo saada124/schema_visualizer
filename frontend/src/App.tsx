@@ -7,7 +7,36 @@ import { WarningBanner } from './components/WarningBanner'
 import { AuditPanel } from './components/AuditPanel'
 import { AiPanel } from './components/AiPanel'
 import { connectSchema, refreshSchema } from './api/client'
-import type { ApiError, SchemaPayload } from './api/types'
+import type { ApiError, SchemaEdge, SchemaPayload } from './api/types'
+
+function neighborhoodIds(
+  edges: SchemaEdge[],
+  focusId: string,
+  hops: number,
+): Set<string> {
+  const adjacency = new Map<string, Set<string>>()
+  for (const edge of edges) {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set())
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set())
+    adjacency.get(edge.source)!.add(edge.target)
+    adjacency.get(edge.target)!.add(edge.source)
+  }
+  const seen = new Set([focusId])
+  let frontier = [focusId]
+  for (let h = 0; h < hops; h++) {
+    const next: string[] = []
+    for (const id of frontier) {
+      for (const neighbor of adjacency.get(id) ?? []) {
+        if (!seen.has(neighbor)) {
+          seen.add(neighbor)
+          next.push(neighbor)
+        }
+      }
+    }
+    frontier = next
+  }
+  return seen
+}
 
 export default function App() {
   const [payload, setPayload] = useState<SchemaPayload | null>(null)
@@ -16,6 +45,7 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [focusId, setFocusId] = useState<string | null>(null)
   const [focusEnabled, setFocusEnabled] = useState(false)
+  const [focusHops, setFocusHops] = useState(1)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [panRequest, setPanRequest] = useState<PanRequest | null>(null)
 
@@ -60,22 +90,38 @@ export default function App() {
 
   const visibleIds = useMemo(() => {
     if (!payload) return null
-    if (query) {
-      const matched = new Set(
-        payload.nodes.filter((n) => n.id.toLowerCase().includes(query.toLowerCase())).map((n) => n.id),
-      )
-      return matched
-    }
+    if (query) return null
     if (focusEnabled && focusId) {
-      const ids = new Set([focusId])
-      for (const e of payload.edges) {
-        if (e.source === focusId) ids.add(e.target)
-        if (e.target === focusId) ids.add(e.source)
-      }
-      return ids
+      return neighborhoodIds(payload.edges, focusId, focusHops)
     }
     return null
-  }, [payload, query, focusEnabled, focusId])
+  }, [payload, query, focusEnabled, focusId, focusHops])
+
+  const hiddenIds = useMemo(() => {
+    if (!payload || !query) return null
+    const matched = new Set(
+      payload.nodes
+        .filter((n) => n.id.toLowerCase().includes(query.toLowerCase()))
+        .map((n) => n.id),
+    )
+    return new Set(payload.nodes.map((n) => n.id).filter((id) => !matched.has(id)))
+  }, [payload, query])
+
+  const dimmedIds = useMemo(() => {
+    if (!payload || !visibleIds) return null
+    const dimmed = new Set(payload.nodes.map((n) => n.id))
+    for (const id of visibleIds) dimmed.delete(id)
+    return dimmed
+  }, [payload, visibleIds])
+
+  const handleCanvasNodeClick = useCallback(
+    (nodeId: string) => {
+      if (!focusEnabled) return
+      setFocusId(nodeId)
+      setPanRequest({ id: nodeId, ts: Date.now() })
+    },
+    [focusEnabled],
+  )
 
   const stats = useMemo(() => {
     if (!payload) return null
@@ -133,6 +179,30 @@ export default function App() {
           <button onClick={() => setFocusEnabled((f) => !f)} style={toolButton(focusEnabled)}>
             Focus mode {focusEnabled ? 'on' : 'off'}
           </button>
+          {focusEnabled ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>Hops</span>
+              {[1, 2, 3].map((h) => (
+                <button key={h} onClick={() => setFocusHops(h)} style={toolButton(focusHops === h)}>
+                  {h}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {focusEnabled && focusId && visibleIds ? (
+            <span
+              style={{
+                fontSize: 12,
+                color: '#075985',
+                background: '#e0f2fe',
+                borderRadius: 999,
+                padding: '3px 10px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Focusing {focusId} · {visibleIds.size} tables
+            </span>
+          ) : null}
           <button onClick={handleRefresh} disabled={loading || !payload} style={toolButton(false)}>
             Refresh schema
           </button>
@@ -166,8 +236,9 @@ export default function App() {
           ) : (
             <DiagramCanvas
               payload={payload}
-              visibleIds={visibleIds}
-              onSelectNode={focusEnabled ? setFocusId : undefined}
+              hiddenIds={hiddenIds}
+              dimmedIds={dimmedIds}
+              onSelectNode={focusEnabled ? handleCanvasNodeClick : undefined}
               highlightId={highlightId}
               panRequest={panRequest}
             />
